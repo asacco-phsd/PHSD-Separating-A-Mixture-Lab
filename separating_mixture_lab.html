@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Separating a Mixture Virtual Lab</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.4 system-ui,Arial,sans-serif;background:#f3f6f9;color:#1d2b36}
+h1{font-size:20px;margin:0;padding:10px 14px;background:#1f5f8b;color:#fff}
+#grid{display:grid;gap:12px;padding:12px}
+@media(min-width:900px){#grid{grid-template-columns:minmax(0,1.5fr) minmax(320px,1fr);align-items:start}#ws{max-height:680px;overflow:auto}}
+section{background:#fff;border:1px solid #d3dde6;border-radius:10px;padding:10px;min-width:0}
+button{font:inherit;padding:6px 10px;border:1px solid #1f5f8b;background:#fff;color:#1f5f8b;border-radius:6px;cursor:pointer}
+button:hover{background:#e6f1f9}button.pri{background:#1f5f8b;color:#fff}button:disabled{opacity:.4;cursor:default}
+#bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}#hud{margin-left:auto;font-weight:600}
+details{margin-top:6px;font-size:13px}
+#wrap{overflow:hidden;border-radius:8px;border:1px solid #b9c7d3;margin:8px 0}
+#stage{position:relative;width:800px;height:520px;transform-origin:0 0;background:linear-gradient(#eef5fa,#dce8f1)}
+.shelf{position:absolute;left:0;right:0;background:#b98a58;border-top:3px solid #8a6038}
+.it{position:absolute}.it:not(.fx){cursor:grab;touch-action:none}.fx{cursor:pointer}
+.it.drag{cursor:grabbing;filter:drop-shadow(0 6px 6px rgba(0,0,0,.3))}
+.cap{position:absolute;top:100%;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap;pointer-events:none;color:#222}
+#msg{padding:8px 10px;border-radius:6px;background:#eaf5ea;border:1px solid #b9dcb9;min-height:42px}#msg.bad{background:#fdecea;border-color:#f1b5ae}
+.ov{position:fixed;inset:0;background:rgba(20,35,50,.6);display:none;align-items:center;justify-content:center;z-index:99;padding:10px}.ov.on{display:flex}
+.box{background:#fff;border-radius:12px;padding:16px;max-width:540px;max-height:90vh;overflow:auto}
+.box h3{margin:0 0 8px}table{border-collapse:collapse;margin-bottom:10px}th,td{border:1px solid #cdd8e1;padding:5px 8px;text-align:left;vertical-align:top}
+.ppe{font-size:40px;padding:8px 12px;margin:4px}.ppe small{display:block;font-size:12px}.ppe.on{background:#d6f3dc;border-color:#2e9e4f}
+#ws h2{margin:0 0 6px;font-size:17px}#ws h3{margin:14px 0 2px;font-size:14px;color:#1f5f8b}
+#ws label{display:block;font-weight:600;margin-top:6px;font-size:13px}
+#ws textarea,#ws input,#ws select{display:block;width:100%;font:inherit;font-weight:400;padding:5px;border:1px solid #b9c7d3;border-radius:5px}
+.row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.bub{animation:r 1s infinite}@keyframes r{from{transform:translateY(0);opacity:.9}to{transform:translateY(-26px);opacity:0}}
+</style></head><body>
+<h1>🧪 Separating a Mixture Virtual Lab</h1>
+<div id="grid">
+<section id="lab">
+ <div id="bar"><button id="bF">📄 Material facts</button><button id="bM">📘 Equipment manual</button><button id="reset">↺ Reset lab</button><span id="hud"></span></div>
+ <details><summary>How to use the lab</summary>Drag a tool onto what you want to use it on: <b>magnet</b> → container · <b>water bottle</b> → container · <b>stir rod</b> → container · <b>funnel</b> → flask or beaker · <b>filter paper</b> → funnel · <b>container</b> → funnel (pour) · <b>container</b> → hot plate or balance · <b>container, magnet or filter paper</b> → jar (store a pure substance). Click the hot plate to switch it on or off. Click a jar to examine it.</details>
+ <div id="wrap"><div id="stage"></div></div>
+ <div id="msg"></div>
+</section>
+<section id="ws"></section>
+</div>
+<div id="ppe" class="ov on"><div class="box"><h3>Safety first</h3><p>Click the lab coat, goggles and gloves to put them on, then enter the lab.</p>
+<button class="ppe">🥼<small>Lab coat</small></button><button class="ppe">🥽<small>Goggles</small></button><button class="ppe">🧤<small>Gloves</small></button><p><button id="go" class="pri" disabled>Enter lab</button></p></div></div>
+<div id="modal" class="ov"><div class="box" id="mb"></div></div>
+<script>
+(()=>{
+const $=s=>document.querySelector(s),S=$('#stage'),cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+const K={sand:'#d8b36a',salt:'#f7f7f7',iron:'#454545'},G='#5b86b3',N=['iron','sand','salt'];
+let I,E,sc=1,drag=null,t0=0,endT=0,steps=0,plateOn=0,tmp='',done=0,back=0,tt;
+const C=()=>({iron:0,sand:0,salt:0,w:0,d:0}),isC=i=>i.k=='beaker'||i.k=='flask';
+const mass=i=>(i.c.iron||0)+(i.c.sand||0)+(i.c.salt||0)+(i.c.w||0);
+const say=(t,b)=>{const m=$('#msg');m.textContent=t;m.className=b?'bad':'';return true};
+const ok=t=>{steps++;return say(t)};
+const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+const modal=h=>{$('#mb').innerHTML=h+'<p><button data-x class="pri">Close</button></p>';$('#modal').classList.add('on')};
+const svg=(w,h,s)=>`<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${s}</svg>`;
+const lcd=()=>{const c=Object.values(I).find(x=>x.on=='bal');return c?mass(c).toFixed(1)+' g':tmp||'0.0 g'};
+
+function init(){
+ I={};const d=(id,k,n,x,y,w,h,o)=>I[id]={id,k,n,x,y,w,h,c:C(),...o};
+ d('bal','balance','Balance',16,318,170,110,{fx:1});
+ d('hp','plate','Hot plate (click to switch on/off)',200,366,160,62,{fx:1});
+ ['A','B','C'].forEach((L,q)=>d('j'+L,'jar','Unknown '+L,560+q*80,76,56,74,{fx:1,L}));
+ d('b1','beaker','Beaker 1 (mixture)',400,338,70,90,{c:{iron:5,sand:12,salt:8,w:0,d:0}});
+ d('b2','beaker','Beaker 2',485,338,70,90);
+ d('fl','flask','Erlenmeyer flask',570,328,80,100);
+ d('fu','funnel','Funnel',672,358,76,70);
+ [['fp','paper','Filter paper',350,114,50,36],['mg','magnet','Magnet',30,94,70,56],['sr','rod','Stir rod',130,136,110,14],['wb','water','Water',270,50,56,100]]
+  .forEach(([id,k,n,x,y,w,h])=>d(id,k,n,x,y,w,h,{home:[x,y]}));
+ S.innerHTML='<div class="shelf" style="top:150px;height:20px"></div><div class="shelf" style="top:428px;height:92px"></div>';
+ E={};for(const id in I){const i=I[id],e=document.createElement('div');e.className='it'+(i.fx?' fx':'');e.dataset.id=id;e.style.width=i.w+'px';e.style.height=i.h+'px';S.appendChild(e);E[id]=e}
+ steps=0;plateOn=0;tmp='';done=0;endT=0;
+ say('Goal: separate the sand, salt and iron using the fewest steps and the least time. Drag equipment from the shelves onto the bench.');render()}
+
+function pile(c,x,wd,yb){const t=c.iron+c.sand+c.salt;if(!t)return'';const h=Math.min(34,5+t*.9),y=yb-h,m=N.reduce((a,b)=>c[b]>c[a]?b:a);
+ let s=`<rect x="${x}" y="${y}" width="${wd}" height="${h}" fill="${K[m]}" stroke="${m=='salt'?'#bbb':'none'}"/>`;
+ N.forEach((k,j)=>{if(k!=m&&c[k]>0)for(let q=0,n=Math.ceil(c[k]*1.5);q<n;q++)s+=`<circle cx="${x+3+(q*37+j*17)%(wd-6)}" cy="${y+3+(q*53+j*29)%Math.max(1,h-5)}" r="1.7" fill="${K[k]}" stroke="#888" stroke-width=".4"/>`});
+ return s}
+
+function draw(i){const c=i.c,k=i.k,id='c'+i.id;
+ if(isC(i)){const B=k=='beaker',sh=B?'M10 8V80Q10 86 16 86H54Q60 86 60 80V8':'M32 4V34L8 88Q6 96 14 96H66Q74 96 72 88L48 34V4',yb=B?86:96,L=c.w/250*(B?72:62);
+  let s=`<defs><clipPath id="${id}"><path d="${sh}Z"/></clipPath></defs><g clip-path="url(#${id})">`;
+  if(c.w)s+=`<rect x="0" y="${yb-L}" width="90" height="${L}" fill="rgba(70,140,230,.45)"/>`;
+  s+=pile(c.d?{...c,salt:0}:c,B?10:12,B?50:56,yb)+`</g><path d="${sh}" fill="rgba(225,240,255,.3)" stroke="${G}" stroke-width="2"/>`;
+  if(i.on=='hp'&&plateOn&&c.w>0)s+=[0,1,2].map(q=>`<circle class="bub" style="animation-delay:${q*.3}s" cx="${25+q*15}" cy="${yb-8}" r="3" fill="#fff"/>`).join('');
+  return svg(i.w,i.h,s)}
+ if(k=='funnel')return svg(76,70,`<path d="M2 4H74L44 40V68H32V40Z" fill="rgba(225,240,255,.45)" stroke="${G}" stroke-width="2"/>`);
+ if(k=='paper')return svg(50,36,`<defs><clipPath id="${id}"><polygon points="2,2 48,2 28,34 22,34"/></clipPath></defs><polygon points="2,2 48,2 28,34 22,34" fill="#fffdf4" stroke="#b9b29c" stroke-width="1.5"/><g clip-path="url(#${id})">${pile(c,4,42,14)}</g>`);
+ if(k=='magnet'){const n=c.iron?Math.min(14,2+c.iron*2):0;let sp='';for(let q=0;q<n;q++)sp+=`<circle cx="${(q%2?44:10)+(q*7)%16}" cy="${3+(q*3)%6}" r="2" fill="#333"/>`;
+  return svg(70,56,`<path d="M10 8V34A25 25 0 0 0 60 34V8H44V34A9 9 0 0 1 26 34V8Z" fill="#d33"/><rect x="10" y="8" width="16" height="10" fill="#ddd"/><rect x="44" y="8" width="16" height="10" fill="#ddd"/>${sp}`)}
+ if(k=='rod')return svg(110,14,`<rect x="2" y="4" width="106" height="6" rx="3" fill="rgba(200,225,245,.9)" stroke="${G}"/>`);
+ if(k=='water')return svg(56,100,`<rect x="22" y="6" width="12" height="16" fill="#fff" stroke="${G}"/><path d="M34 11H48L52 6" stroke="${G}" fill="none" stroke-width="3"/><path d="M14 30Q14 22 22 22H34Q42 22 42 30V90Q42 96 36 96H20Q14 96 14 90Z" fill="#cde6ff" stroke="${G}" stroke-width="2"/><text x="28" y="66" text-anchor="middle" font-size="12" fill="#245">H₂O</text>`);
+ if(k=='balance')return svg(170,110,`<rect x="0" y="62" width="170" height="48" rx="8" fill="#cfd6dd" stroke="#8a949e"/><rect x="78" y="44" width="14" height="20" fill="#aab3bc"/><rect x="25" y="34" width="120" height="10" rx="4" fill="#9aa5b0" stroke="#7b8691"/><rect x="18" y="72" width="134" height="28" rx="4" fill="#1b2a1b"/><text x="144" y="93" text-anchor="end" font-family="monospace" font-size="20" fill="#7CFC7C">${lcd()}</text>`);
+ if(k=='plate')return svg(160,62,`<rect x="0" y="22" width="160" height="40" rx="8" fill="#4a4f55"/><rect x="8" y="10" width="120" height="14" rx="4" fill="${plateOn?'#ff5a2a':'#2b2f33'}" stroke="#222"/><circle cx="140" cy="38" r="9" fill="${plateOn?'#3ddc84':'#c33'}"/><text x="140" y="58" font-size="9" fill="#fff" text-anchor="middle">${plateOn?'ON':'OFF'}</text>`);
+ if(k=='jar')return svg(56,74,`<defs><clipPath id="${id}"><rect x="2" y="12" width="52" height="62" rx="6"/></clipPath></defs><rect x="2" y="12" width="52" height="62" rx="6" fill="rgba(235,245,255,.7)"/><g clip-path="url(#${id})">${pile(c,2,52,72)}</g><rect x="2" y="12" width="52" height="62" rx="6" fill="none" stroke="${G}" stroke-width="2"/><rect x="8" y="0" width="40" height="12" rx="3" fill="#777"/><rect x="12" y="28" width="32" height="26" rx="3" fill="#fff" stroke="#999"/><text x="28" y="47" text-anchor="middle" font-size="18" font-weight="700" fill="#333">${i.L}</text>`)}
+
+function lay(){['fu','fp'].forEach(id=>{const i=I[id],p=I[i.par];if(p){if(id=='fu'){i.x=p.x+(p.w-i.w)/2;i.y=p.y-62}else{i.x=p.x+13;i.y=p.y+4}}})}
+function pos(){lay();for(const id in I){E[id].style.left=I[id].x+'px';E[id].style.top=I[id].y+'px'}}
+function render(){for(const id in I)E[id].innerHTML=draw(I[id])+'<div class="cap">'+I[id].n+'</div>';pos();hud()}
+function hud(){$('#hud').textContent='Steps: '+steps+'  ·  ⏱ '+fmt(t0?Math.round(((endT||Date.now())-t0)/1000):0)}
+
+function pour(d,f){const r=I[f.par],p=I.fp.par=='fu'?I.fp:0,c=d.c;
+ if(!r)return say('Put the funnel on a flask or beaker first so the liquid has somewhere to go.',1);
+ if(r==d)return true;if(!mass(d))return say('That container is empty.',1);back=1;
+ const clr=()=>{N.forEach(k=>c[k]=0);c.w=c.d=0};
+ if(!p){N.forEach(k=>r.c[k]+=c[k]);r.c.w+=c.w;r.c.d=r.c.d||c.d;clr();return ok('No filter paper! Everything fell straight through into the '+r.n+'.')}
+ r.c.w+=c.w;if(c.d){r.c.salt+=c.salt;r.c.d=1}else p.c.salt+=c.salt;p.c.sand+=c.sand;p.c.iron+=c.iron;
+ const m=c.w?(c.d?'The water and dissolved salt passed through the paper; the solids were caught on it.':'The water passed through; the solids were caught on the paper.'):'The solids are caught on the paper.';
+ clr();return ok(m)}
+
+function dep(d,t){const c=d.c,ks=N.filter(k=>c[k]>0);
+ if(!ks.length)return say('There is nothing to transfer.',1);
+ if(c.w>0)return say('There is still water in there. Separate the solid from the liquid first.',1);
+ if(ks.length>1)return say('That is still a mixture of '+ks.join(' and ')+'. Separate it further before storing it.',1);
+ const j=N.find(k=>t.c[k]>0);if(j&&j!=ks[0])return say('That jar already holds a different substance.',1);
+ t.c[ks[0]]+=c[ks[0]];c[ks[0]]=0;back=1;if(d.k=='paper')d.par=null;
+ return ok('Stored in '+t.n+'. Click the jar to examine it.')}
+
+function act(d,t){const D=d.k,T=t.k,c=d.c,tc=t.c,any=f=>Object.values(I).some(f);
+ if(D=='magnet'&&(isC(t)||T=='paper'))return tc.iron?(c.iron+=tc.iron,tc.iron=0,ok('The magnet pulls the iron filings out of the mixture.')):say('Nothing here is attracted to the magnet.',1);
+ if(D=='water'&&isC(t))return tc.w>=250?say('That container is full.',1):(tc.w+=50,ok('Added 50 mL of water ('+tc.w+' mL total).'));
+ if(D=='rod'&&isC(t)){if(!tc.w)return say('Stirring dry solids does nothing. Is something missing?',1);
+  if(tc.salt&&!tc.d){tc.d=1;return ok('Stirring... the salt dissolves. Sand and iron do not.')}return say(tc.salt?'The salt is already dissolved.':'Stirred. Nothing here dissolves.')}
+ if(D=='funnel'&&isC(t))return any(x=>x.par==t.id)?say('This container already has a funnel.',1):(d.par=t.id,ok('Funnel placed on the '+t.n+'.'));
+ if(D=='paper'&&T=='funnel')return (d.par='fu',ok('Filter paper placed in the funnel.'));
+ if(isC(d)&&T=='funnel')return pour(d,t);
+ if(isC(d)&&(T=='plate'||T=='balance')){if(any(x=>x.on==t.id))return say('That spot is already occupied.',1);
+  d.x=t.x+(t.w-d.w)/2;d.y=t.y+(T=='plate'?10:36)-d.h;d.on=t.id;
+  return ok(T=='plate'?'Placed on the hot plate. Click the hot plate to switch it on.':'Balance reading: '+mass(d).toFixed(1)+' g')}
+ if((D=='magnet'||D=='paper')&&T=='balance'){tmp=mass(d).toFixed(1)+' g';clearTimeout(tt);tt=setTimeout(()=>{tmp='';render()},4000);return ok('Balance reading: '+tmp)}
+ if((isC(d)||D=='magnet'||D=='paper')&&T=='jar')return dep(d,t)}
+
+function chk(){if(done)return;const s=['A','B','C'].map(L=>N.find(k=>I['j'+L].c[k]>0));if(s.includes(undefined)||new Set(s).size<3)return;
+ done=1;endT=Date.now();const tot=['A','B','C'].reduce((a,L)=>a+mass(I['j'+L]),0);
+ modal(`<h3>Separation complete! 🎉</h3><p>Steps: <b>${steps}</b> · Time: <b>${fmt(Math.round((endT-t0)/1000))}</b> · Mass recovered: <b>${tot.toFixed(1)} g</b> (${(tot/25*100).toFixed(0)}% of the 25.0 g mixture).</p><p>Click each jar to examine it, then complete <b>Stage Two</b> on the worksheet.</p>`)}
+
+function drop(i,s){back=0;const m=8,cx=i.x+i.w/2,cy=i.k=='funnel'?i.y+i.h-6:i.y+i.h/2;
+ const dsc=x=>{while(x.par){x=I[x.par];if(x==i)return 1}return 0};
+ for(const t of Object.values(I).reverse()){if(t==i||dsc(t)||cx<t.x-m||cx>t.x+t.w+m||cy<t.y-m||cy>t.y+t.h+m)continue;if(act(i,t))break}
+ if(back){i.x=s.x;i.y=s.y;i.on=s.on}
+ if(i.home&&!i.par){i.x=i.home[0];i.y=i.home[1]}
+ E[i.id].style.zIndex='';E[i.id].classList.remove('drag');chk();render()}
+
+S.addEventListener('pointerdown',e=>{const el=e.target.closest('.it');if(!el)return;const i=I[el.dataset.id];if(i.fx)return;e.preventDefault();
+ el.setPointerCapture(e.pointerId);const r=S.getBoundingClientRect();
+ drag={i,s:{x:i.x,y:i.y,on:i.on},ox:(e.clientX-r.left)/sc-i.x,oy:(e.clientY-r.top)/sc-i.y};i.par=null;i.on=null;el.style.zIndex=50;el.classList.add('drag')});
+S.addEventListener('pointermove',e=>{if(!drag)return;const r=S.getBoundingClientRect(),i=drag.i;
+ i.x=cl((e.clientX-r.left)/sc-drag.ox,0,800-i.w);i.y=cl((e.clientY-r.top)/sc-drag.oy,0,505-i.h);pos()});
+const end=()=>{if(!drag)return;const{i,s}=drag;drag=null;drop(i,s)};
+S.addEventListener('pointerup',end);S.addEventListener('pointercancel',end);
+S.addEventListener('click',e=>{const el=e.target.closest('.it.fx');if(!el)return;const i=I[el.dataset.id];
+ if(i.k=='plate'){plateOn=!plateOn;ok(plateOn?'Hot plate ON. Be careful, it gets hot!':'Hot plate OFF.');render()}
+ if(i.k=='jar'){const k=N.find(x=>i.c[x]>0);if(!k)return modal(`<h3>${i.n}</h3><p>This jar is empty. Drop a purified substance onto it to store it.</p>`);
+  const p={iron:['Gray, shiny metallic filings','Strongly attracted','Does not dissolve; sinks','Conducts electricity'],sand:['Tan, hard, gritty grains','Not attracted','Does not dissolve; sinks','Does not conduct electricity'],salt:['White, cube-shaped crystals','Not attracted','Dissolves completely','Solid does not conduct; the solution does']}[k];
+  modal(`<h3>${i.n}: observations</h3><table>${['Appearance','Magnet test','Water test','Electrical conductivity'].map((l,q)=>`<tr><th>${l}</th><td>${p[q]}</td></tr>`).join('')}<tr><th>Mass</th><td>${mass(i).toFixed(1)} g</td></tr></table>`)}});
+
+setInterval(()=>{let ch=0;if(plateOn&&!drag)Object.values(I).forEach(i=>{if(i.on=='hp'&&i.c.w>0){i.c.w=Math.max(0,i.c.w-2);ch=1;if(!i.c.w){i.c.d=0;say('The water has evaporated. White salt crystals are left behind in the '+i.n+'.')}}});
+ if(ch)render();else hud()},150);
+
+$('#modal').addEventListener('click',e=>{if(e.target.id=='modal'||e.target.hasAttribute('data-x'))$('#modal').classList.remove('on')});
+$('#bF').onclick=()=>modal('<h3>Material facts</h3><table><tr><th>Iron filings (Fe)</th><td>Gray metallic solid. Attracted to magnets. Insoluble in water. Density 7.87 g/cm³. Melts at 1538 °C.</td></tr><tr><th>Sand (SiO₂)</th><td>Silicon dioxide. Tan, hard grains. Not magnetic. Insoluble in water. Density about 2.65 g/cm³. Melts near 1700 °C.</td></tr><tr><th>Salt (NaCl)</th><td>Sodium chloride. White cubic crystals. Not magnetic. Dissolves in water (about 36 g per 100 mL). Melts at 801 °C.</td></tr></table>');
+$('#bM').onclick=()=>modal('<h3>Equipment manual</h3><table>'+[['Beaker','Holds, mixes and heats liquids and solids.'],['Erlenmeyer flask','Narrow-necked container for holding, swirling and heating liquids; can collect liquid from a funnel.'],['Filter paper','Porous paper that lets liquid pass but traps solid particles.'],['Funnel','Holds filter paper above a container.'],['Hot plate','Heats a container from below.'],['Magnet','Attracts magnetic materials.'],['Stir rod','Stirs mixtures to speed up dissolving.'],['Balance','Measures mass in grams.'],['Water bottle','Delivers 50 mL of water per use.']].map(r=>`<tr><th>${r[0]}</th><td>${r[1]}</td></tr>`).join('')+'</table>');
+$('#reset').onclick=()=>{init();if(t0)t0=Date.now()};
+document.querySelectorAll('.ppe').forEach(b=>b.onclick=()=>{b.classList.toggle('on');$('#go').disabled=document.querySelectorAll('.ppe.on').length<3});
+$('#go').onclick=()=>{$('#ppe').classList.remove('on');t0=Date.now();hud()};
+const fit=()=>{sc=Math.min(1,$('#wrap').clientWidth/800);S.style.transform='scale('+sc+')';$('#wrap').style.height=520*sc+'px'};
+addEventListener('resize',fit);
+
+/* Worksheet */
+const WS=[['Define: processes used to separate mixtures','t',['Distillation','Filtration','Evaporation','Magnetic attraction']],
+['Stage One: material facts (click “Material facts” and record the facts)','t',['Iron','Sand','Salt']],
+['Stage One: equipment manual (record the use of each piece)','t',['Beaker','Erlenmeyer flask','Filter paper','Funnel','Hot plate','Magnet','Stirrer','Balance']],
+['Stage One: questions','t',['What were the substances contained in the mixture?','Which substance did you remove first? What process did you use to remove it?','Which substance did you remove next? What process did you use to remove it?','Which substance did you remove third? What process did you use to remove it?','Why was it necessary to add water before separating the sand and the salt?','Do you think the salt would be able to get through the coffee filter when it was dissolved in the water? Why or why not?','Would the salt have been able to get through the coffee filter if it had been dry? Why or why not?']],
+['Mass data (g), measured with the balance','m',['Mixture','Iron','Sand','Salt']],
+['Stage Two: describe the substance in each container','t',['Unknown A','Unknown B','Unknown C']],
+['Stage Two: identify each as a compound, element, or mixture','s',['A','B','C']]];
+let ans={};try{ans=JSON.parse(localStorage.getItem('mixlab')||'{}')}catch(e){}
+let h='<h2>📝 Student worksheet</h2><button id="copy">📋 Copy my answers</button><label>Name<input data-k="name"></label>',n=0;
+WS.forEach(([t,ty,L])=>{h+=`<h3>${t}</h3>`+(ty=='m'?'<div class="row">':'');
+ L.forEach(l=>{const k='f'+n++;h+=`<label>${l}`+(ty=='m'?`<input data-k="${k}" inputmode="decimal">`:ty=='s'?`<select data-k="${k}"><option value="">Choose…<option>Compound<option>Element<option>Mixture</select>`:`<textarea rows="2" data-k="${k}"></textarea>`)+'</label>'});
+ h+=ty=='m'?'</div>':''});
+$('#ws').innerHTML=h;
+document.querySelectorAll('#ws [data-k]').forEach(el=>el.value=ans[el.dataset.k]||'');
+$('#ws').addEventListener('input',e=>{ans[e.target.dataset.k]=e.target.value;try{localStorage.setItem('mixlab',JSON.stringify(ans))}catch(x){}});
+$('#copy').onclick=()=>{const b=$('#copy');let t='Separating a Mixture Virtual Lab\n';
+ document.querySelectorAll('#ws h3,#ws label').forEach(el=>{t+=el.tagName=='H3'?'\n== '+el.textContent+' ==\n':el.firstChild.textContent+': '+el.querySelector('[data-k]').value+'\n'});
+ let p;try{p=navigator.clipboard.writeText(t)}catch(e){p=Promise.reject()}
+ p.catch(()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy')}catch(e){}a.remove()})
+  .then(()=>{b.textContent='✓ Copied!';setTimeout(()=>b.textContent='📋 Copy my answers',1800)})};
+
+init();fit();
+})();
+</script></body></html>
